@@ -202,6 +202,9 @@ sentry {
 
 dependencies {
     implementation(project(":composeApp"))
+    // Android Auto screen that shows the playing video while the car is parked (sideloaded builds only).
+    "fullImplementation"(libs.androidx.car.app)
+    "fullImplementation"(libs.androidx.car.app.projected)
     implementation(libs.androidx.appcompat)
     implementation(libs.compose.runtime)
     coreLibraryDesugaring(libs.desugar.jdk.libs)

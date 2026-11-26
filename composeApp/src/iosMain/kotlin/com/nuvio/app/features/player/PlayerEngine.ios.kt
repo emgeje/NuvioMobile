@@ -60,6 +60,7 @@ actual fun PlatformPlayerSurface(
     resizeMode: PlayerResizeMode,
     playbackEngine: AndroidPlaybackEngine?,
     useNativeController: Boolean,
+    showOnCarDisplay: Boolean,
     onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,

@@ -54,7 +54,20 @@ internal abstract class MpvSurfaceView(context: Context, private val vo: String)
         }
     }
 
+    // Read and written on the mpv thread only.
+    private var viewSurface: Surface? = null
+    private var viewSurfaceSize: Pair<Int, Int>? = null
+    private var externalSurface: Surface? = null
+
+    /** Runs on the mpv thread when the video moves to or from an external (car) surface. */
+    protected open fun onExternalSurfaceChanged(active: Boolean) = Unit
+
     private fun attach(surface: Surface) = executeMpv {
+        viewSurface = surface
+        if (externalSurface == null) attachSurface(surface)
+    }
+
+    private fun attachSurface(surface: Surface) {
         mpv.attachSurface(surface)
         surfaceAttached = true
         mpv.setOptionString("force-window", "yes")
@@ -63,12 +76,59 @@ internal abstract class MpvSurfaceView(context: Context, private val vo: String)
     }
 
     private fun resize(width: Int, height: Int) = executeMpv {
+        viewSurfaceSize = width to height
+        if (externalSurface == null) setSurfaceSize(width, height)
+    }
+
+    private fun setSurfaceSize(width: Int, height: Int) {
         mpv.setPropertyString("android-surface-size", "${width}x$height")
     }
 
     private fun detach(releaseSurface: () -> Unit) {
-        val job = destroyJob ?: mpvScope.launch { detachSurface() }
+        val job = destroyJob ?: mpvScope.launch {
+            // While the video is on an external surface the view's surface is not attached to mpv.
+            if (externalSurface == null) detachSurface()
+            viewSurface = null
+            viewSurfaceSize = null
+        }
         job.invokeOnCompletion { releaseSurface() }
+    }
+
+    /** Renders the video into [surface] (on the car display) instead of this view until [detachExternalSurface]. */
+    fun attachExternalSurface(surface: Surface, width: Int, height: Int) = executeMpv {
+        if (externalSurface === surface) return@executeMpv
+        detachSurface()
+        externalSurface = surface
+        attachSurface(surface)
+        setSurfaceSize(width, height)
+        onExternalSurfaceChanged(true)
+    }
+
+    fun resizeExternalSurface(width: Int, height: Int) = executeMpv {
+        if (externalSurface != null) setSurfaceSize(width, height)
+    }
+
+    /** Moves the video back to this view; [onDetached] runs once mpv no longer uses the external surface. */
+    fun detachExternalSurface(onDetached: () -> Unit) {
+        if (released.get()) {
+            val job = destroyJob
+            if (job == null) onDetached() else job.invokeOnCompletion { onDetached() }
+            return
+        }
+        val job = mpvScope.launch {
+            if (externalSurface == null) return@launch
+            detachSurface()
+            externalSurface = null
+            runCatching {
+                onExternalSurfaceChanged(false)
+                if (released.get()) return@runCatching
+                viewSurface?.let { surface ->
+                    attachSurface(surface)
+                    viewSurfaceSize?.let { (width, height) -> setSurfaceSize(width, height) }
+                }
+            }.onFailure(::logFailure)
+        }
+        job.invokeOnCompletion { onDetached() }
     }
 
     private fun detachSurface() {

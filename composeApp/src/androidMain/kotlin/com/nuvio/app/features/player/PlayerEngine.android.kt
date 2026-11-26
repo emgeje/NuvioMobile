@@ -81,6 +81,9 @@ import com.nuvio.app.features.autosync.LIBMPV_AUTOSYNC_FILE_PREFIX
 import com.nuvio.app.features.autosync.rememberAutoSyncCoordinator
 import com.nuvio.app.features.autosync.rememberLibmpvAutoSyncCoordinator
 import com.nuvio.app.R
+import com.nuvio.app.features.player.car.CarVideoOutput
+import com.nuvio.app.features.player.car.CarVideoSink
+import com.nuvio.app.features.player.car.CarVideoTarget
 import com.nuvio.app.features.streams.normalizeStreamType
 import `is`.xyz.mpv.MPV
 import `is`.xyz.mpv.MPVNode
@@ -125,11 +128,28 @@ actual fun PlatformPlayerSurface(
     resizeMode: PlayerResizeMode,
     playbackEngine: AndroidPlaybackEngine?,
     useNativeController: Boolean,
+    showOnCarDisplay: Boolean,
     onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
 ) {
+    val engineOnControllerReady: (PlayerEngineController) -> Unit = if (showOnCarDisplay) {
+        { controller ->
+            CarVideoOutput.updateController(controller)
+            onControllerReady(controller)
+        }
+    } else {
+        onControllerReady
+    }
+    val engineOnSnapshot: (PlayerPlaybackSnapshot) -> Unit = if (showOnCarDisplay) {
+        { snapshot ->
+            CarVideoOutput.onSnapshot(snapshot)
+            onSnapshot(snapshot)
+        }
+    } else {
+        onSnapshot
+    }
     val playerSettings = remember {
         PlayerSettingsRepository.ensureLoaded()
         PlayerSettingsRepository.uiState.value
@@ -163,9 +183,10 @@ actual fun PlatformPlayerSurface(
             initialPositionRequestKey = initialPositionRequestKey,
             resizeMode = resizeMode,
             useNativeController = useNativeController,
+            showOnCarDisplay = showOnCarDisplay,
             onInitialPositionHandled = onInitialPositionHandled,
-            onControllerReady = onControllerReady,
-            onSnapshot = onSnapshot,
+            onControllerReady = engineOnControllerReady,
+            onSnapshot = engineOnSnapshot,
             onError = onError,
         )
         ResolvedAndroidPlaybackEngine.Libmpv -> {
@@ -186,8 +207,9 @@ actual fun PlatformPlayerSurface(
                 hardwareDecodingEnabled = playerSettings.androidLibmpvHardwareDecodingEnabled,
                 yuv420pEnabled = playerSettings.androidLibmpvYuv420pEnabled,
                 preferredSubtitleLanguage = playerSettings.preferredSubtitleLanguage,
-                onControllerReady = onControllerReady,
-                onSnapshot = onSnapshot,
+                showOnCarDisplay = showOnCarDisplay,
+                onControllerReady = engineOnControllerReady,
+                onSnapshot = engineOnSnapshot,
                 onError = onError,
             )
         }
@@ -222,6 +244,7 @@ private fun ExoPlayerSurface(
     initialPositionRequestKey: String?,
     resizeMode: PlayerResizeMode,
     useNativeController: Boolean,
+    showOnCarDisplay: Boolean,
     onInitialPositionHandled: (key: String, handled: Boolean) -> Unit,
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
@@ -281,6 +304,8 @@ private fun ExoPlayerSurface(
     val ffmpegAudioRenderer = remember { AtomicReference<FfmpegAudioRenderer?>(null) }
     val latestExternalSubtitleMimeType = rememberUpdatedState(selectedExternalSubtitleMimeType)
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
+    // The video renders on the Android Auto screen; the phone's PlayerView is unbound meanwhile.
+    var carSurfaceActive by remember { mutableStateOf(false) }
     var videoAspectRatio by remember(playerSourceKey) { mutableStateOf(0f) }
     val latestVideoAspectRatio = rememberUpdatedState(videoAspectRatio)
     var currentSubtitleStyle by remember { mutableStateOf(SubtitleStyleState.DEFAULT) }
@@ -1268,6 +1293,45 @@ private fun ExoPlayerSurface(
         )
     }
 
+    // Declared after the effect that releases the player, so it is disposed (and leaves the car surface) first.
+    DisposableEffect(exoPlayer, showOnCarDisplay) {
+        if (!showOnCarDisplay) return@DisposableEffect onDispose { }
+        var carSurface: android.view.Surface? = null
+        val cueListener = object : Player.Listener {
+            override fun onCues(cueGroup: CueGroup) {
+                CarVideoOutput.onSubtitleText(
+                    cueGroup.cues
+                        .mapNotNull { cue -> cue.text?.toString()?.trim()?.takeIf { it.isNotEmpty() } }
+                        .joinToString("\n"),
+                )
+            }
+        }
+        val sink = object : CarVideoSink {
+            override fun attachCarSurface(target: CarVideoTarget) {
+                carSurfaceActive = true
+                playerViewRef?.player = null
+                carSurface = target.surface
+                exoPlayer.setVideoSurface(target.surface)
+            }
+
+            override fun detachCarSurface(onDetached: () -> Unit) {
+                carSurface?.let(exoPlayer::clearVideoSurface)
+                carSurface = null
+                carSurfaceActive = false
+                playerViewRef?.player = exoPlayer
+                onDetached()
+            }
+        }
+        exoPlayer.addListener(cueListener)
+        CarVideoOutput.registerSink(sink)
+        onDispose {
+            runCatching { carSurface?.let(exoPlayer::clearVideoSurface) }
+            carSurface = null
+            exoPlayer.removeListener(cueListener)
+            CarVideoOutput.unregisterSink(sink)
+        }
+    }
+
     LaunchedEffect(exoPlayer) {
         while (isActive) {
             dispatchExoPlayerSnapshot()
@@ -1282,7 +1346,7 @@ private fun ExoPlayerSurface(
                 PlayerView(viewContext).apply {
                     useController = useNativeController
                     layoutParams = android.view.ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-                    player = exoPlayer
+                    player = if (carSurfaceActive) null else exoPlayer
                     keepScreenOn = exoPlayer.shouldKeepPlayerScreenOn()
                     this.resizeMode = resizeMode.toExoResizeMode()
                     setShutterBackgroundColor(android.graphics.Color.BLACK)
@@ -1309,7 +1373,7 @@ private fun ExoPlayerSurface(
                 }
             },
             update = { playerView ->
-                playerView.player = exoPlayer
+                playerView.player = if (carSurfaceActive) null else exoPlayer
                 playerView.useController = useNativeController
                 playerView.resizeMode = resizeMode.toExoResizeMode()
                 playerViewRef = playerView
@@ -1343,6 +1407,7 @@ private fun LibmpvPlayerSurface(
     hardwareDecodingEnabled: Boolean,
     yuv420pEnabled: Boolean,
     preferredSubtitleLanguage: String?,
+    showOnCarDisplay: Boolean,
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
     onError: (String?) -> Unit,
@@ -1640,6 +1705,29 @@ private fun LibmpvPlayerSurface(
         playerViewRef?.applyResizeMode(resizeMode)
     }
 
+    DisposableEffect(playerViewRef, showOnCarDisplay) {
+        val view = playerViewRef
+        if (view == null || !showOnCarDisplay) return@DisposableEffect onDispose { }
+        val sink = object : CarVideoSink {
+            override fun attachCarSurface(target: CarVideoTarget) {
+                view.attachExternalSurface(target.surface, target.width, target.height)
+            }
+
+            override fun resizeCarSurface(width: Int, height: Int) {
+                view.resizeExternalSurface(width, height)
+            }
+
+            override fun detachCarSurface(onDetached: () -> Unit) {
+                view.detachExternalSurface(onDetached)
+            }
+        }
+        CarVideoOutput.registerSink(sink)
+        onDispose {
+            view.detachExternalSurface {}
+            CarVideoOutput.unregisterSink(sink)
+        }
+    }
+
     LaunchedEffect(playerViewRef, sourceUrl, sourceAudioUrl, sanitizedSourceHeaders, externalSubtitles) {
         val view = playerViewRef ?: return@LaunchedEffect
         onControllerReady(
@@ -1729,6 +1817,9 @@ private class NuvioLibmpvView(
         private set
     private var appliedSubtitleStyle = SubtitleStyleState.DEFAULT
     private var styledSubtitleVisible = false
+    /** The video is on the car display, where the phone's styled subtitle overlay is not visible; mpv draws them. */
+    @Volatile
+    private var carOutputActive = false
     private var appliedAssOverride: String? = null
     private var appliedAssScale = 1.0
     private var appliedAssBold: Boolean? = null
@@ -1764,7 +1855,7 @@ private class NuvioLibmpvView(
             }
             val styled = style.usesStyledOverlay && SubtitleRendering.supportsTextOverlay(codec)
             if (styled != styledSubtitleVisible) {
-                mpv.setPropertyBoolean("sub-visibility", !styled)
+                mpv.setPropertyBoolean("sub-visibility", !styled || carOutputActive)
                 styledSubtitleVisible = styled
             }
             val text = if (styled) {
@@ -1981,6 +2072,11 @@ private class NuvioLibmpvView(
             videoWidth = videoWidth,
             videoHeight = videoHeight,
         )
+    }
+
+    override fun onExternalSurfaceChanged(active: Boolean) {
+        carOutputActive = active
+        mpv.setPropertyBoolean("sub-visibility", !styledSubtitleVisible || active)
     }
 
     fun applyResizeMode(resizeMode: PlayerResizeMode) {

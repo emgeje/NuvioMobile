@@ -97,6 +97,8 @@ expect fun PlatformPlayerSurface(
     resizeMode: PlayerResizeMode = PlayerResizeMode.Fit,
     playbackEngine: AndroidPlaybackEngine? = null,
     useNativeController: Boolean = false,
+    /** Lets the video move to the Android Auto screen while the car is parked (Android full builds only). */
+    showOnCarDisplay: Boolean = false,
     onInitialPositionHandled: (key: String, handled: Boolean) -> Unit = { _, _ -> },
     onControllerReady: (PlayerEngineController) -> Unit,
     onSnapshot: (PlayerPlaybackSnapshot) -> Unit,
