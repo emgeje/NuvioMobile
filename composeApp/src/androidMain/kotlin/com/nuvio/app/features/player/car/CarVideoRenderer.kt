@@ -69,6 +69,11 @@ class CarVideoRenderer(
             presentation.videoVisible = value
         }
 
+    /** A small status line in the corner of the car screen, for checking what the app sees; null hides it. */
+    fun setStatusText(text: String?) {
+        presentation.statusText = text
+    }
+
     /** The part of the screen not covered by the car's own UI; used to keep the fitted video uncovered. */
     fun setVisibleArea(area: Rect?) {
         presentation.visibleArea = area
@@ -94,6 +99,7 @@ private class CarVideoPresentation(
 ) : Presentation(context, virtualDisplay.display, android.R.style.Theme_Black_NoTitleBar_Fullscreen) {
     private lateinit var videoLayout: VideoAspectLayout
     private lateinit var subtitleView: TextView
+    private lateinit var statusView: TextView
     private val playbackListener: (CarPlaybackState) -> Unit = { state ->
         if (::videoLayout.isInitialized) videoLayout.setVideoSize(state.videoWidth, state.videoHeight)
     }
@@ -115,6 +121,17 @@ private class CarVideoPresentation(
             field = value
             if (::videoLayout.isInitialized) videoLayout.visibleArea = value
         }
+
+    var statusText: String? = null
+        set(value) {
+            field = value
+            if (::statusView.isInitialized) syncStatus()
+        }
+
+    private fun syncStatus() {
+        statusView.text = statusText
+        statusView.visibility = if (statusText.isNullOrEmpty()) View.GONE else View.VISIBLE
+    }
 
     var videoVisible: Boolean = initialVideoVisible
         set(value) {
@@ -158,7 +175,22 @@ private class CarVideoPresentation(
                 bottomMargin = (32 * context.resources.displayMetrics.density).roundToInt()
             },
         )
+        statusView = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14f)
+            setBackgroundColor(0x99000000.toInt())
+            val padding = (4 * context.resources.displayMetrics.density).roundToInt()
+            setPadding(padding * 2, padding, padding * 2, padding)
+        }
+        root.addView(
+            statusView,
+            FrameLayout.LayoutParams(WRAP, WRAP, Gravity.TOP or Gravity.END).apply {
+                val margin = (12 * context.resources.displayMetrics.density).roundToInt()
+                setMargins(margin, margin, margin, margin)
+            },
+        )
         setContentView(root)
+        syncStatus()
         syncVideoVisibility()
     }
 

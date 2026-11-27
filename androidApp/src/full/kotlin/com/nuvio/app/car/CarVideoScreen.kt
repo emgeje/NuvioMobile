@@ -27,10 +27,20 @@ import com.nuvio.app.features.player.car.CarVideoRenderer
  * message and the playback buttons, and the video goes back to the phone with the audio playing on.
  */
 internal class CarVideoScreen(carContext: CarContext) : Screen(carContext), DefaultLifecycleObserver {
-    private val parking = ParkingMonitor(carContext) {
-        updateVideo()
-        invalidate()
-    }
+    private val parking = ParkingMonitor(
+        carContext = carContext,
+        onStateChanged = {
+            updateVideo()
+            invalidate()
+        },
+        onSpeedReading = { metersPerSecond ->
+            lastSpeedKmh = metersPerSecond?.let { it * 3.6f }
+            updateStatus()
+        },
+    )
+    private var lastSpeedKmh: Float? = null
+    private val debugBuild =
+        carContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
     private var playback: CarPlaybackState = CarVideoOutput.playbackState
     private val playbackListener: (CarPlaybackState) -> Unit = { newState ->
         val oldState = playback
@@ -143,6 +153,7 @@ internal class CarVideoScreen(carContext: CarContext) : Screen(carContext), Defa
         val showVideo = parking.state == ParkingMonitor.State.Parked && !hidden
         renderer?.let { current ->
             current.videoVisible = showVideo
+            updateStatus()
             return
         }
         val container = surfaceContainer ?: return
@@ -162,6 +173,15 @@ internal class CarVideoScreen(carContext: CarContext) : Screen(carContext), Defa
         }.getOrNull()?.also { created ->
             visibleArea?.let(created::setVisibleArea)
         }
+        updateStatus()
+    }
+
+    /** In debug builds, shows the mode and the speed the app reads, to tell builds apart and check the speed. */
+    private fun updateStatus() {
+        val current = renderer ?: return
+        if (!debugBuild) return
+        val speed = lastSpeedKmh?.let { String.format(java.util.Locale.ROOT, "%.0f km/h", it) } ?: "? km/h"
+        current.setStatusText("P-mode · $speed · ${parking.state}")
     }
 
     private fun releaseRenderer() {

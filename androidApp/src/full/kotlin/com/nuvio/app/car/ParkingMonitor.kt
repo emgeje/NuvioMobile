@@ -22,6 +22,7 @@ import kotlin.math.abs
 internal class ParkingMonitor(
     private val carContext: CarContext,
     private val onStateChanged: () -> Unit,
+    private val onSpeedReading: (metersPerSecond: Float?) -> Unit = {},
 ) {
     enum class State { Unknown, PermissionDenied, SpeedUnavailable, Moving, Parked }
 
@@ -95,6 +96,7 @@ internal class ParkingMonitor(
             .filter { it.isSuccess() }
             .mapNotNull { it.value?.let(::abs) }
             .maxOrNull()
+        onSpeedReading(metersPerSecond)
         when {
             metersPerSecond == null -> {
                 cancelPending()
