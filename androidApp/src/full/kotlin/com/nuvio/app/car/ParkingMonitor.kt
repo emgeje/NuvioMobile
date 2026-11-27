@@ -43,6 +43,13 @@ internal class ParkingMonitor(
     }
     private val speedListener = OnCarDataAvailableListener<Speed> { speed -> onSpeed(speed) }
 
+    // Fail-safe: without fresh speed readings the car cannot count as parked.
+    private val speedTimeout = Runnable {
+        cancelPending()
+        onSpeedReading(null)
+        update(State.SpeedUnavailable, "no speed update for ${SPEED_TIMEOUT_MS / 1000} s")
+    }
+
     fun start() {
         started = true
         if (hasSpeedPermission()) {
@@ -68,6 +75,7 @@ internal class ParkingMonitor(
     fun stop() {
         started = false
         cancelPending()
+        handler.removeCallbacks(speedTimeout)
         runCatching { carInfo?.removeSpeedListener(speedListener) }
         carInfo = null
     }
@@ -88,6 +96,8 @@ internal class ParkingMonitor(
     }
 
     private fun onSpeed(speed: Speed) {
+        handler.removeCallbacks(speedTimeout)
+        handler.postDelayed(speedTimeout, SPEED_TIMEOUT_MS)
         // Some cars report only the speed shown on the dashboard, not the raw one. When both are
         // reported, the higher one counts, so that either showing movement stops the video.
         val raw = speed.rawSpeedMetersPerSecond
@@ -146,5 +156,6 @@ internal class ParkingMonitor(
         const val CAR_SPEED_PERMISSION = "com.google.android.gms.permission.CAR_SPEED"
         const val STANDSTILL_MAX_SPEED_MPS = 0.5f
         const val PARKED_CONFIRM_MS = 30_000L
+        const val SPEED_TIMEOUT_MS = 5_000L
     }
 }
