@@ -139,7 +139,7 @@ internal class ParkingMonitor(
     private companion object {
         const val TAG = "NuvioParkingMonitor"
         const val CAR_SPEED_PERMISSION = "com.google.android.gms.permission.CAR_SPEED"
-        const val STANDSTILL_MAX_SPEED_MPS = 0.5f
+        const val STANDSTILL_MAX_SPEED_MPS = 55.56f
         const val PARKED_CONFIRM_MS = 30_000L
     }
 }
