@@ -7,6 +7,9 @@
     <uses-permission android:name="androidx.car.app.NAVIGATION_TEMPLATES" />
     <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
     <uses-permission android:name="com.google.android.gms.permission.CAR_SPEED" />
+    <!-- The phone's GPS speed: some cars hand apps a fixed, meaningless speed. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application>
         <meta-data
