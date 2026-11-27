@@ -2,7 +2,7 @@
 <resources>
     <string name="car_message_no_player">Indíts el egy műsort a telefonon</string>
     <string name="car_message_driving">A videó fél perc parkolás után indul. A hang tovább szól.</string>
-    <string name="car_message_speed_unavailable">Még nincs GPS-sebesség, ezért videó nem jeleníthető meg. A hang tovább szól.</string>
+    <string name="car_message_speed_unavailable">Az autó nem adja meg a sebességét, ezért videó nem jeleníthető meg. A hang tovább szól.</string>
     <string name="car_message_hidden">Kép elrejtve</string>
-    <string name="car_message_speed_permission">Engedélyezd a telefonon a helymeghatározást a Nuviónak, különben videó nem jeleníthető meg.</string>
+    <string name="car_message_speed_permission">Engedélyezd a telefonon, hogy a Nuvio olvashassa az autó sebességét, különben videó nem jeleníthető meg.</string>
 </resources>

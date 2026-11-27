@@ -33,8 +33,12 @@ internal class CarVideoScreen(carContext: CarContext) : Screen(carContext), Defa
             updateVideo()
             invalidate()
         },
-        onReadingsChanged = { updateStatus() },
+        onSpeedReading = { metersPerSecond ->
+            lastSpeedKmh = metersPerSecond?.let { it * 3.6f }
+            updateStatus()
+        },
     )
+    private var lastSpeedKmh: Float? = null
     private val debugBuild =
         carContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
     private var playback: CarPlaybackState = CarVideoOutput.playbackState
@@ -176,11 +180,8 @@ internal class CarVideoScreen(carContext: CarContext) : Screen(carContext), Defa
     private fun updateStatus() {
         val current = renderer ?: return
         if (!debugBuild) return
-        fun kmh(metersPerSecond: Float?): String =
-            metersPerSecond?.let { String.format(java.util.Locale.ROOT, "%.0f", it * 3.6f) } ?: "?"
-        current.setStatusText(
-            "P-mode · GPS ${kmh(parking.gpsSpeedMps)} km/h · car ${kmh(parking.carSpeedMps)} km/h · ${parking.state}",
-        )
+        val speed = lastSpeedKmh?.let { String.format(java.util.Locale.ROOT, "%.0f km/h", it) } ?: "? km/h"
+        current.setStatusText("P-mode · $speed · ${parking.state}")
     }
 
     private fun releaseRenderer() {

@@ -2,7 +2,7 @@
 <resources>
     <string name="car_message_no_player">Start a title on your phone</string>
     <string name="car_message_driving">Video starts after the car has been parked for half a minute. Audio keeps playing.</string>
-    <string name="car_message_speed_unavailable">No GPS speed yet, so video cannot be shown. Audio keeps playing.</string>
+    <string name="car_message_speed_unavailable">The car does not report its speed, so video cannot be shown. Audio keeps playing.</string>
     <string name="car_message_hidden">Video hidden</string>
-    <string name="car_message_speed_permission">Allow Nuvio to use location on your phone, otherwise video cannot be shown.</string>
+    <string name="car_message_speed_permission">Allow Nuvio to read the car\'s speed on your phone, otherwise video cannot be shown.</string>
 </resources>
