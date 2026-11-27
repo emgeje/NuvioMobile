@@ -33,6 +33,7 @@ class CarVideoRenderer(
     height: Int,
     densityDpi: Int,
     fill: Boolean,
+    videoVisible: Boolean,
 ) {
     private val virtualDisplay: VirtualDisplay
     private val presentation: CarVideoPresentation
@@ -48,7 +49,7 @@ class CarVideoRenderer(
             surface,
             0,
         )
-        presentation = CarVideoPresentation(context, virtualDisplay, fill)
+        presentation = CarVideoPresentation(context, virtualDisplay, fill, videoVisible)
         presentation.show()
     }
 
@@ -56,6 +57,16 @@ class CarVideoRenderer(
         get() = presentation.fill
         set(value) {
             presentation.fill = value
+        }
+
+    /**
+     * Whether the video is shown. When false the screen is drawn black and the player goes back to
+     * the phone; the display stays alive so that no stale video frame is left on the car screen.
+     */
+    var videoVisible: Boolean
+        get() = presentation.videoVisible
+        set(value) {
+            presentation.videoVisible = value
         }
 
     /** The part of the screen not covered by the car's own UI; used to keep the fitted video uncovered. */
@@ -79,6 +90,7 @@ private class CarVideoPresentation(
     context: Context,
     virtualDisplay: VirtualDisplay,
     initialFill: Boolean,
+    initialVideoVisible: Boolean,
 ) : Presentation(context, virtualDisplay.display, android.R.style.Theme_Black_NoTitleBar_Fullscreen) {
     private lateinit var videoLayout: VideoAspectLayout
     private lateinit var subtitleView: TextView
@@ -104,13 +116,30 @@ private class CarVideoPresentation(
             if (::videoLayout.isInitialized) videoLayout.visibleArea = value
         }
 
+    var videoVisible: Boolean = initialVideoVisible
+        set(value) {
+            if (field == value) return
+            field = value
+            if (::videoLayout.isInitialized) syncVideoVisibility()
+        }
+
+    /** Adds or removes the TextureView; removing it takes the surface away from the player at once. */
+    private fun syncVideoVisibility() {
+        if (videoVisible) {
+            if (videoLayout.childCount == 0) videoLayout.addView(createTextureView())
+            subtitleView.alpha = 1f
+        } else {
+            videoLayout.removeAllViews()
+            subtitleView.alpha = 0f
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
         videoLayout = VideoAspectLayout(context).apply {
             fill = this@CarVideoPresentation.fill
             visibleArea = this@CarVideoPresentation.visibleArea
-            addView(createTextureView())
         }
         root.addView(videoLayout, FrameLayout.LayoutParams(MATCH, MATCH))
         subtitleView = TextView(context).apply {
@@ -130,6 +159,7 @@ private class CarVideoPresentation(
             },
         )
         setContentView(root)
+        syncVideoVisibility()
     }
 
     override fun onStart() {

@@ -79,7 +79,7 @@ internal class CarVideoScreen(carContext: CarContext) : Screen(carContext), Defa
     }
 
     override fun onGetTemplate(): Template {
-        val showingVideo = renderer != null
+        val showingVideo = renderer?.videoVisible == true
         val actions = ActionStrip.Builder()
         if (playback.hasPlayer) {
             actions.addAction(
@@ -135,15 +135,18 @@ internal class CarVideoScreen(carContext: CarContext) : Screen(carContext), Defa
             .setOnClickListener(onClick)
             .build()
 
-    /** Shows the video only while the car is parked and the screen has a surface. */
+    /**
+     * Shows the video only while the car is parked. Otherwise the screen is drawn black rather than
+     * released, so the last video frame does not stay on the car screen.
+     */
     private fun updateVideo() {
-        val container = surfaceContainer
-        val surface = container?.surface
-        if (container == null || surface == null || parking.state != ParkingMonitor.State.Parked || hidden) {
-            releaseRenderer()
+        val showVideo = parking.state == ParkingMonitor.State.Parked && !hidden
+        renderer?.let { current ->
+            current.videoVisible = showVideo
             return
         }
-        if (renderer != null) return
+        val container = surfaceContainer ?: return
+        val surface = container.surface ?: return
         renderer = runCatching {
             CarVideoRenderer(
                 context = carContext.applicationContext,
@@ -152,6 +155,7 @@ internal class CarVideoScreen(carContext: CarContext) : Screen(carContext), Defa
                 height = container.height,
                 densityDpi = container.dpi,
                 fill = fill,
+                videoVisible = showVideo,
             )
         }.onFailure { error ->
             Log.e(TAG, "Failed to show video on the car screen", error)

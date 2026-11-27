@@ -87,20 +87,23 @@ internal class ParkingMonitor(
     }
 
     private fun onSpeed(speed: Speed) {
-        // Some cars report only the speed shown on the dashboard, not the raw one.
+        // Some cars report only the speed shown on the dashboard, not the raw one. When both are
+        // reported, the higher one counts, so that either showing movement stops the video.
         val raw = speed.rawSpeedMetersPerSecond
         val display = speed.displaySpeedMetersPerSecond
-        val reading = if (raw.isSuccess()) raw else display
-        val metersPerSecond = reading.value
+        val metersPerSecond = listOf(raw, display)
+            .filter { it.isSuccess() }
+            .mapNotNull { it.value?.let(::abs) }
+            .maxOrNull()
         when {
-            !reading.isSuccess() || metersPerSecond == null -> {
+            metersPerSecond == null -> {
                 cancelPending()
                 update(
                     State.SpeedUnavailable,
                     "raw=${raw.status.statusName()} display=${display.status.statusName()}",
                 )
             }
-            abs(metersPerSecond) > STANDSTILL_MAX_SPEED_MPS -> {
+            metersPerSecond > STANDSTILL_MAX_SPEED_MPS -> {
                 cancelPending()
                 update(State.Moving)
             }
