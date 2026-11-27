@@ -108,12 +108,19 @@ internal class CarVideoScreen(carContext: CarContext) : Screen(carContext), Defa
 
         val template = NavigationTemplate.Builder().setActionStrip(actions.build())
         messageRes()?.let { message ->
-            template.setNavigationInfo(MessageInfo.Builder(carContext.getString(message)).build())
+            val info = MessageInfo.Builder(carContext.getString(message))
+            if (parking.state == ParkingMonitor.State.SpeedUnavailable ||
+                parking.state == ParkingMonitor.State.PermissionDenied
+            ) {
+                parking.detail?.let(info::setText)
+            }
+            template.setNavigationInfo(info.build())
         }
         return template.build()
     }
 
     private fun messageRes(): Int? = when {
+        parking.state == ParkingMonitor.State.PermissionDenied -> R.string.car_message_speed_permission
         parking.state == ParkingMonitor.State.SpeedUnavailable -> R.string.car_message_speed_unavailable
         parking.state != ParkingMonitor.State.Parked -> R.string.car_message_driving
         !playback.hasPlayer -> R.string.car_message_no_player
